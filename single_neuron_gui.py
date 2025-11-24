@@ -5,31 +5,18 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 
-# ==========================
-# 1. Neuron z różnymi aktywacjami
-# ==========================
-
 class SingleNeuron:
     def __init__(self, n_inputs: int, activation: str = "heaviside",
                  train_activation: str = "sigmoid",
                  lr: float = 0.1, beta: float = 1.0):
-        """
-        n_inputs      - liczba wejść (bez biasu)
-        activation    - funkcja do EWALUACJI (heaviside/sigmoid/sin/tanh/sign/relu/lrelu)
-        train_activation - funkcja używana w UCZENIU ("heaviside" lub "sigmoid")
-        lr            - learning rate
-        beta          - parametr sigmoidy
-        """
         self.n_inputs = n_inputs
         self.activation_name = activation
         self.train_activation_name = train_activation
         self.lr = lr
         self.beta = beta
 
-        # wagi + bias w jednym wektorze (ostatni element = bias)
         self.w = np.random.randn(n_inputs + 1) * 0.1
 
-    # ----- aktywacje -----
     def _f(self, s, name=None):
         if name is None:
             name = self.activation_name
@@ -51,73 +38,53 @@ class SingleNeuron:
         raise ValueError(f"Unknown activation {name}")
 
     def _f_prime(self, s):
-        """Pochodna funkcji aktywacji DO TRENINGU.
-        Wspieramy Heaviside (założenie f' = 1) i sigmoid.
-        """
         if self.train_activation_name == "heaviside":
-            # wykład mówi: załóżmy, że pochodna = 1
             return np.ones_like(s)
         if self.train_activation_name == "sigmoid":
             y = self._f(s, name="sigmoid")
             return self.beta * y * (1.0 - y)
         raise ValueError(f"Training derivative not defined for {self.train_activation_name}")
 
-    # ----- pomocnicze -----
     def _net_input(self, X):
-        # X: (N, n_inputs)
-        # dodajemy bias = 1
         if X.ndim == 1:
             X = X.reshape(1, -1)
         Xb = np.hstack([X, np.ones((X.shape[0], 1))])
         return Xb @ self.w, Xb
 
-    # ----- predykcja -----
     def predict_proba(self, X):
         s, _ = self._net_input(X)
-        return self._f(s)    # ciągłe wyjście
+        return self._f(s)
 
     def predict_label(self, X):
         y = self.predict_proba(X)
-        # klasy 0/1
         return (y >= 0.5).astype(int)
 
-    # ----- trening -----
     def train(self, X, d, epochs: int = 50, shuffle: bool = True):
-        """
-        X : (N, n_inputs)
-        d : (N,) etykiety 0/1
-        """
         X = np.asarray(X, dtype=float)
         d = np.asarray(d, dtype=float).flatten()
 
         n_samples = X.shape[0]
 
-        for ep in range(epochs):
+        for _ in range(epochs):
             if shuffle:
                 idx = np.random.permutation(n_samples)
                 X = X[idx]
                 d = d[idx]
 
             for j in range(n_samples):
-                xj = X[j:j+1]  # (1, n_inputs)
+                xj = X[j:j+1]
                 target = d[j]
 
-                s, xj_b = self._net_input(xj)  # s: (1,), xj_b: (1, n_inputs+1)
+                s, xj_b = self._net_input(xj)
                 s = s[0]
                 xj_b = xj_b[0]
 
-                # wyjście DO TRENINGU – używamy train_activation
                 y_train = self._f(s, name=self.train_activation_name)
                 error = target - y_train
                 grad = self._f_prime(s) * error
 
-                # aktualizacja wag
                 self.w += self.lr * grad * xj_b
 
-
-# ==========================
-# 2. Generator danych 2D (Gaussy)
-# ==========================
 
 def generate_gaussian_class(n_modes: int, samples_per_mode: int,
                             mean_range=(-1.0, 1.0), std_range=(0.1, 0.3), seed=None):
@@ -135,7 +102,7 @@ def generate_gaussian_class(n_modes: int, samples_per_mode: int,
         samples = np.random.multivariate_normal([mx, my], cov, samples_per_mode)
         all_samples.append(samples)
 
-    return np.vstack(all_samples)  # (n_modes*samples_per_mode, 2)
+    return np.vstack(all_samples)
 
 
 def generate_two_class_data(modes_c0: int, modes_c1: int, samples_per_mode: int):
@@ -151,21 +118,15 @@ def generate_two_class_data(modes_c0: int, modes_c1: int, samples_per_mode: int)
     return X, y
 
 
-# ==========================
-# 3. GUI + wizualizacja
-# ==========================
-
 class NeuronGUI:
     def __init__(self, master):
         self.master = master
         master.title("Single Neuron Classifier")
 
-        # dane
         self.X = None
         self.y = None
         self.neuron = None
 
-        # --- panel kontroli ---
         control_frame = ttk.Frame(master)
         control_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
 
@@ -208,14 +169,11 @@ class NeuronGUI:
         self.info_label = ttk.Label(control_frame, text="No data yet")
         self.info_label.pack(anchor=tk.W, pady=10)
 
-        # --- matplotlib figure ---
         fig, ax = plt.subplots(figsize=(5, 5))
         self.fig = fig
         self.ax = ax
         self.canvas = FigureCanvasTkAgg(self.fig, master=master)
         self.canvas.get_tk_widget().pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
-
-    # ----- actions -----
 
     def on_generate(self):
         modes_c0 = self.modes_c0_var.get()
@@ -254,8 +212,6 @@ class NeuronGUI:
 
         self._plot_with_boundary()
 
-    # ----- plotting helpers -----
-
     def _plot_points_only(self):
         self.ax.clear()
         if self.X is not None:
@@ -273,7 +229,6 @@ class NeuronGUI:
     def _plot_with_boundary(self):
         self.ax.clear()
 
-        # zakres siatki
         x_min, x_max = self.X[:, 0].min() - 0.5, self.X[:, 0].max() + 0.5
         y_min, y_max = self.X[:, 1].min() - 0.5, self.X[:, 1].max() + 0.5
 
@@ -285,11 +240,9 @@ class NeuronGUI:
         zz = self.neuron.predict_label(grid)
         zz = zz.reshape(xx.shape)
 
-        # tło – dwa kolory dla dwóch klas
         self.ax.contourf(xx, yy, zz, levels=[-0.5, 0.5, 1.5],
                          colors=["#ccddff", "#ffcccc"], alpha=0.7)
 
-        # punkty treningowe
         idx0 = self.y == 0
         idx1 = self.y == 1
         self.ax.scatter(self.X[idx0, 0], self.X[idx0, 1], c="blue", edgecolor="k", label="class 0")
